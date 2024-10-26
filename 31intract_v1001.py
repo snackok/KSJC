@@ -226,6 +226,7 @@ def get_geometry_params(KSJC_ply):
     projected_ply = KSJC_ply.to_crs(epsg=4508)
     KSJC_ply['KMZDMJ'] = projected_ply.geometry.area.round(2)
     KSJC_ply = KSJC_ply.drop(columns='centroid')
+    return KSJC_ply
 
 
 def join_KQ(KSJC_ply, KQ_ply):
@@ -265,7 +266,7 @@ def do_work(p_shp_path, p_aux_path, p_output_path):
         align_crs(KSJC_ply, KQ_ply, XZQ_ply, BHQ_ply, ZDQ_ply, rail_buf_ply)
 
         # ---------------开始计算X,Y,面积参数-------------------
-        get_geometry_params(KSJC_ply)
+        KSJC_ply = get_geometry_params(KSJC_ply)
 
         # 进行空间连接并赋值新字段
         # join_KQ(KSJC_ply, KQ_ply)
@@ -319,7 +320,6 @@ def do_work(p_shp_path, p_aux_path, p_output_path):
                                predicate='intersects')
 
         # 计算相交后的几何形状并添加为新列
-        # 删除 'index_right' 列中有 NaN 的行
         valid_joined_XZQ = joined_XZQ.dropna(subset=['index_right'])
 
         # 计算相交后的几何形状并添加为新列
@@ -351,6 +351,11 @@ def do_work(p_shp_path, p_aux_path, p_output_path):
         KSJC_ply = KSJC_ply.reset_index()
 
         # --------------------和保护区文件相交，读取BHQMC代码-------------------------
+        # 检查并删除重复的 level_0 列
+        if 'level_0' in KSJC_ply.columns:
+            KSJC_ply = KSJC_ply.drop(columns='level_0')
+        if 'level_0' in BHQ_ply.columns:
+            BHQ_ply = BHQ_ply.drop(columns='level_0')
         # 执行空间连接操作
         joined_BHQ = gpd.sjoin(KSJC_ply, BHQ_ply[['geometry', 'MC']], how='left', predicate='intersects')
         # 创建并赋值新字段
@@ -490,7 +495,7 @@ if __name__ == '__main__':
     root = Tk()
 
     # 设置标题
-    root.title('图斑赋属性v0912')
+    root.title('图斑赋属性v1026')
     shp_path = StringVar()  # 图斑位置
     shp_KM_path = StringVar()  # 图斑位置
     aux_path = StringVar()  # 辅助信息目录
