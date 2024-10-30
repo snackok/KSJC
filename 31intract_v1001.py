@@ -62,6 +62,21 @@ def read_files(p_shp_path, p_aux_path):
     return KSJC_ply, KQ_ply, XZQ_ply, BHQ_ply, ZDQ_ply, rail_buf_ply, data_reg_ply, LKBH_dict,dict_exl,encoding
 
 
+def spatial_join(target, join, fields, how='left', predicate='intersects'):
+    joined = gpd.sjoin(target, join[fields], how=how, predicate=predicate)
+    return joined.groupby('F_ID').first()
+
+
+def assign_fields_from_joined(target_gdf, joined_gdf, fields, field_mapping=None):
+    if field_mapping:
+        for target_field, joined_field in field_mapping.items():
+            target_gdf[target_field] = joined_gdf[joined_field]
+    else:
+        for field in fields:
+            target_gdf[field] = joined_gdf[field]
+    return target_gdf
+
+
 def decimal_to_dms(decimal):
     """Convert decimal degree to DMS format with two decimal places."""
     degrees = int(decimal)
@@ -284,23 +299,22 @@ def do_work(p_shp_path, p_aux_path, p_output_path):
         KSJC_ply = create_F_ID(KSJC_ply)
 
         # 选择要传递的字段
-        fields_to_transfer = ['XKZH', 'KSMC', 'JJLX', 'QTZKZ', 'KCFS', 'KCZKZ']
-        KQ_ply_selected = KQ_ply[['geometry'] + fields_to_transfer]
+        KQ_fields = ['geometry', 'XKZH', 'KSMC', 'JJLX', 'QTZKZ', 'KCFS', 'KCZKZ']
+        joined_KQ = spatial_join(KSJC_ply, KQ_ply, KQ_fields)
 
-        # 执行空间连接操作
-        joined_KQ = gpd.sjoin(KSJC_ply, KQ_ply_selected, how='left', predicate='intersects')
-        # 根据 KSJC_ply 的索引进行分组，并获取第一个相交结果
-        # 使用 'F_ID' 来确保对原始 KSJC_ply 进行正确的分组
-        joined_unique = joined_KQ.groupby('F_ID').first()
-        # 创建并赋值新字段
-        # 将分组后的唯一结果的 'XKZH' 字段赋值给 KSJC_ply['KMXKZ']
-        KSJC_ply['KMXKZ'] = joined_unique['XKZH']     #.reindex(KSJC_ply.index)
-        KSJC_ply['KMMC'] = joined_unique['KSMC']
-        KSJC_ply['KMJJLX'] = joined_unique['JJLX']
-        KSJC_ply['KMQTKZ'] = joined_unique['QTZKZ']
-        KSJC_ply['KMKCFS'] = joined_unique['KCFS']
-        # 仅在 KSJC_ply['KMLX'] 为空时赋值 joined_KQ['KCZKZ'] 的值
-        KSJC_ply['KMLX'] = np.where(joined_unique['KCZKZ'].isnull(), KSJC_ply['KMLX'], joined_unique['KCZKZ'])
+        # 使用映射字段赋值
+        field_mapping = {
+            'KMXKZ': 'XKZH',
+            'KMMC': 'KSMC',
+            'KMJJLX': 'JJLX',
+            'KMQTKZ': 'QTZKZ',
+            'KMKCFS': 'KCFS',
+            'KMLX': 'KCZKZ'  # 这里根据你的逻辑调整
+        }
+        KSJC_ply = assign_fields_from_joined(KSJC_ply, joined_KQ, None,field_mapping)
+
+        # # 仅在 KSJC_ply['KMLX'] 为空时赋值 joined_KQ['KCZKZ'] 的值
+        KSJC_ply['KMLX'] = np.where(joined_KQ['KCZKZ'].isnull(), KSJC_ply['KMLX'], joined_KQ['KCZKZ'])
         KSJC_ply['KMLX'] = KSJC_ply['KMLX'].apply(lambda x: "" if x is None else x)
 
         # --------------------和行政区域文件相交，读取省、市、县和地址字段-------------------------
